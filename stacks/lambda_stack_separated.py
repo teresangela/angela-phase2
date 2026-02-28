@@ -20,10 +20,13 @@ from aws_cdk import aws_sqs as sqs
 from aws_cdk.aws_lambda_event_sources import SqsEventSource
 from aws_cdk import aws_s3_notifications as s3n
 from aws_cdk import aws_secretsmanager as secretsmanager
+from aws_cdk import Fn
+from aws_cdk import aws_apigateway as apigw
+
 
 
 class LambdaStackSeparated(Stack):
-    def __init__(self, scope: Construct, construct_id: str, **kwargs):
+    def __init__(self, scope: Construct, construct_id: str, cognito_stack=None, **kwargs):
         super().__init__(scope, construct_id, **kwargs)
 
         # ------------------------
@@ -253,33 +256,93 @@ class LambdaStackSeparated(Stack):
             rest_api_name="HyPhase2ApiSeparated",
             deploy_options=apigw.StageOptions(stage_name="prod"),
         )
+        self.api = api
+        state_machine_arn = Fn.import_value("StripeStateMachineArn")
+
+        # Cognito Authorizer
+        authorizer = apigw.CognitoUserPoolsAuthorizer(
+            self,
+            "HyPhase2Authorizer",
+            cognito_user_pools=[cognito_stack.user_pool],
+        )
+        start_payment_workflow = _lambda.Function(
+            self,
+            "StartPaymentWorkflowFn",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="lambda_function.handler",  # ← fix this
+            code=_lambda.Code.from_asset("lambda/StartPaymentWorkflow"),
+            environment={"STATE_MACHINE_ARN": state_machine_arn},
+        )
+
+        start_payment_workflow.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["states:StartExecution"],
+                resources=[state_machine_arn],
+            )
+        )
+
+        payments = api.root.add_resource("payments")
+        payments.add_method("POST", apigw.LambdaIntegration(start_payment_workflow),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
 
         users = api.root.add_resource("users")
-        users.add_method("POST", apigw.LambdaIntegration(create_user))
-        users.add_method("GET", apigw.LambdaIntegration(get_user))
+        users.add_method("POST", apigw.LambdaIntegration(create_user))  # public - sign up
+        users.add_method("GET", apigw.LambdaIntegration(get_user),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
 
         user_id = users.add_resource("{userId}")
-        user_id.add_method("GET", apigw.LambdaIntegration(get_user))
-        user_id.add_method("PUT", apigw.LambdaIntegration(update_user))
-        user_id.add_method("DELETE", apigw.LambdaIntegration(delete_user))
+        user_id.add_method("GET", apigw.LambdaIntegration(get_user),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
+        user_id.add_method("PUT", apigw.LambdaIntegration(update_user),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
+        user_id.add_method("DELETE", apigw.LambdaIntegration(delete_user),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
 
         upload_url = user_id.add_resource("upload-url")
-        upload_url.add_method("POST", apigw.LambdaIntegration(get_upload_url))
+        upload_url.add_method("POST", apigw.LambdaIntegration(get_upload_url),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
 
         download_url = user_id.add_resource("download-url")
-        download_url.add_method("GET", apigw.LambdaIntegration(get_download_url))
+        download_url.add_method("GET", apigw.LambdaIntegration(get_download_url),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
 
         products = api.root.add_resource("products")
-        products.add_method("POST", apigw.LambdaIntegration(create_product))
-        products.add_method("GET", apigw.LambdaIntegration(get_product))
+        products.add_method("POST", apigw.LambdaIntegration(create_product),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
+        products.add_method("GET", apigw.LambdaIntegration(get_product))  # public - browse
 
         product_id = products.add_resource("{productId}")
-        product_id.add_method("GET", apigw.LambdaIntegration(get_product))
-        product_id.add_method("PUT", apigw.LambdaIntegration(update_product))
-        product_id.add_method("DELETE", apigw.LambdaIntegration(delete_product))
+        product_id.add_method("GET", apigw.LambdaIntegration(get_product))  # public - browse
+        product_id.add_method("PUT", apigw.LambdaIntegration(update_product),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
+        product_id.add_method("DELETE", apigw.LambdaIntegration(delete_product),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
 
         orders = api.root.add_resource("orders")
-        orders.add_method("POST", apigw.LambdaIntegration(create_order))
+        orders.add_method("POST", apigw.LambdaIntegration(create_order),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
 
         # ------------------------
         # SNS Alarm Topic + Error Alarms
@@ -631,43 +694,3 @@ class LambdaStackSeparated(Stack):
         export_job_id.add_method("GET", apigw.LambdaIntegration(get_export_job))
 
 
-        # ------------------------
-        # Import Stripe secret from Secrets Manager
-        # ------------------------
-        stripe_secret = secretsmanager.Secret.from_secret_name_v2(
-            self,
-            "StripeSecret",
-            "stripe/secret-key",
-        )
-
-        # ------------------------
-        # Lambda: StripePaymentFn
-        # ------------------------
-        stripe_payment = create_lambda(
-            "StripePaymentFn",
-            "lambda/StripePayment",
-            {
-                "ORDER_TABLE_NAME": "Order",
-                "STRIPE_SECRET_ARN": stripe_secret.secret_arn,
-            },
-        )
-        self.stripe_payment_fn = stripe_payment
-
-    
-        # Permissions
-        order_table.grant_read_write_data(stripe_payment)
-        stripe_secret.grant_read(stripe_payment)
-
-        # API Gateway: POST /payments
-        payments = api.root.add_resource("payments")
-        payments.add_method("POST", apigw.LambdaIntegration(stripe_payment))
-
-        # CloudWatch alarm
-        stripe_alarm = stripe_payment.metric_errors().create_alarm(
-            self,
-            "StripePaymentFnErrorAlarm",
-            alarm_name="StripePaymentFn-errors",
-            threshold=1,
-            evaluation_periods=1,
-        )
-        stripe_alarm.add_alarm_action(cw_actions.SnsAction(alarm_topic))

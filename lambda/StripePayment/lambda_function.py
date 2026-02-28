@@ -3,18 +3,17 @@ import json
 import boto3
 import urllib.request
 import urllib.error
-import time
 import urllib.parse
 from datetime import datetime, timezone
 
-dynamodb = boto3.resource("dynamodb")
+dynamodb = boto3.resource(
+    "dynamodb",
+    region_name=os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-1")
+)
 secrets  = boto3.client("secretsmanager", region_name="ap-southeast-1")
 
 ORDER_TABLE_NAME = os.environ["ORDER_TABLE_NAME"]
 STRIPE_SECRET_ARN = os.environ["STRIPE_SECRET_ARN"]
-
-MAX_RETRIES = 3
-RETRY_DELAY = 1  # seconds
 
 
 def get_stripe_key():
@@ -22,14 +21,17 @@ def get_stripe_key():
     return response["SecretString"]
 
 
-def create_payment_intent(stripe_key, amount, currency, order_id, user_id, retry=0):
-    """Call Stripe API with basic retry/backoff."""
+def create_payment_intent(stripe_key, amount, currency, order_id, user_id):
+    """
+    Call Stripe API ONCE.
+    Step Functions will handle retry.
+    """
     url  = "https://api.stripe.com/v1/payment_intents"
     data = urllib.parse.urlencode({
-        "amount":   amount,        # in cents, e.g. 10000 = $100
+        "amount": amount,
         "currency": currency,
         "metadata[orderId]": order_id,
-        "metadata[userId]":  user_id,
+        "metadata[userId]": user_id,
     }).encode()
 
     req = urllib.request.Request(url, data=data, method="POST")
@@ -42,24 +44,23 @@ def create_payment_intent(stripe_key, amount, currency, order_id, user_id, retry
 
     except urllib.error.HTTPError as e:
         error_body = json.loads(e.read().decode())
-        error_type = error_body.get("error", {}).get("type", "")
 
-        # Retry on rate limit (429) with exponential backoff
-        if e.code == 429 and retry < MAX_RETRIES:
-            wait = RETRY_DELAY * (2 ** retry)
-            print(f"[RETRY] Rate limited, waiting {wait}s (attempt {retry + 1}/{MAX_RETRIES})")
-            time.sleep(wait)
-            return create_payment_intent(stripe_key, amount, currency, order_id, user_id, retry + 1)
+        # 🔥 Important: Let Step Function retry this
+        if e.code == 429:
+            raise Exception("RateLimited")
 
-        raise Exception(f"Stripe error [{e.code}] {error_type}: {error_body.get('error', {}).get('message')}")
+        raise Exception(
+            f"StripeHttpError_{e.code}: {error_body.get('error', {}).get('message')}"
+        )
 
 
 def lambda_handler(event, context):
-    """
-    Triggered manually or via API Gateway.
-    event shape: { "orderId": "xxx", "amount": 10000, "currency": "usd" }
-    """
-    body     = json.loads(event.get("body") or "{}")
+   # Support both API Gateway (has "body") and Step Functions (raw JSON)
+    if "body" in event:
+        body = json.loads(event.get("body") or "{}")
+    else:
+        body = event  # ← Step Functions passes payload directly
+
     order_id = body.get("orderId")
     amount   = body.get("amount")
     currency = body.get("currency")
