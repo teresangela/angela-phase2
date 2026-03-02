@@ -1,4 +1,5 @@
 import json, os, boto3, logging
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger()
 logger.setLevel(logging.ERROR)
@@ -28,8 +29,22 @@ def lambda_handler(event, context):
         if not user_id:
             put_metric("HTTP4xx", context)
             return _resp(400, {"message": "userId is required in path"})
-        table.delete_item(Key={"userId": user_id})
+
+        # ConditionExpression ensures we return 404 if user doesn't exist
+        table.delete_item(
+            Key={"userId": user_id},
+            ConditionExpression="attribute_exists(userId)",
+        )
+
         return _resp(200, {"message": "User deleted", "userId": user_id})
+
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            put_metric("HTTP4xx", context)
+            return _resp(404, {"message": "User not found"})
+        logger.error(f"DynamoDB error: {str(e)}")
+        put_metric("HTTP5xx", context)
+        return _resp(500, {"message": "Internal server error"})
     except Exception as e:
         logger.error(f"Unhandled exception: {str(e)}")
         put_metric("HTTP5xx", context)

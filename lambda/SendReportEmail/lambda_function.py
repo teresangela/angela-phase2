@@ -4,10 +4,12 @@ import boto3
 from datetime import datetime, timezone
 
 ses = boto3.client("ses", region_name="ap-southeast-1")
+s3  = boto3.client("s3", region_name="ap-southeast-1")
 
 SENDER_EMAIL    = os.environ["SENDER_EMAIL"]
 RECIPIENT_EMAIL = os.environ["RECIPIENT_EMAIL"]
 REPORTS_BUCKET  = os.environ["REPORTS_BUCKET"]
+PRESIGNED_EXPIRY = int(os.environ.get("PRESIGNED_EXPIRY", 3600))  # 1 hour default
 
 
 def lambda_handler(event, context):
@@ -16,11 +18,16 @@ def lambda_handler(event, context):
         key      = record["s3"]["object"]["key"]
         size     = record["s3"]["object"]["size"]
         now      = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-
-        s3_url   = f"https://{bucket}.s3.ap-southeast-1.amazonaws.com/{key}"
         filename = key.split("/")[-1]
 
         print(f"[OK] New report detected: s3://{bucket}/{key}")
+
+        # Generate presigned URL (works with private buckets)
+        presigned_url = s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=PRESIGNED_EXPIRY,
+        )
 
         ses.send_email(
             Source=SENDER_EMAIL,
@@ -57,11 +64,15 @@ def lambda_handler(event, context):
                                     <td style="padding: 8px; border: 1px solid #ddd;"><strong>Generated At</strong></td>
                                     <td style="padding: 8px; border: 1px solid #ddd;">{now}</td>
                                 </tr>
+                                <tr>
+                                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>Link expires</strong></td>
+                                    <td style="padding: 8px; border: 1px solid #ddd;">in {PRESIGNED_EXPIRY // 3600} hour(s)</td>
+                                </tr>
                             </table>
                             <br>
                             <p>
-                                <a href="{s3_url}" style="background-color: #FF9900; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">
-                                    View Report in S3
+                                <a href="{presigned_url}" style="background-color: #FF9900; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">
+                                    Download Report
                                 </a>
                             </p>
                             <p style="color: #888; font-size: 12px;">This is an automated message from your HY-Phase2 reporting system.</p>
@@ -70,7 +81,7 @@ def lambda_handler(event, context):
                         """,
                     },
                     "Text": {
-                        "Data": f"Daily Order Report Ready\n\nFile: {filename}\nBucket: {bucket}\nKey: {key}\nSize: {size} bytes\nGenerated At: {now}\n\nS3 URL: {s3_url}",
+                        "Data": f"Daily Order Report Ready\n\nFile: {filename}\nBucket: {bucket}\nKey: {key}\nSize: {size} bytes\nGenerated At: {now}\n\nDownload (expires in {PRESIGNED_EXPIRY // 3600}h): {presigned_url}",
                     },
                 },
             },
