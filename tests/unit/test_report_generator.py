@@ -11,7 +11,7 @@ import importlib.util
 os.environ["REPORTS_BUCKET"]     = "angel-phase2-reports"
 os.environ["ORDER_TABLE_NAME"]   = "Order"
 os.environ["JOBS_TABLE_NAME"]    = "ReportJob"
-os.environ["AWS_DEFAULT_REGION"] = "ap-southeast-1"
+_REGION = os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-1")  # fix S6262
 os.environ["AWS_ACCESS_KEY_ID"]  = "testing"
 os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
 
@@ -33,13 +33,13 @@ JOBS_TABLE_NAME  = "ReportJob"
 
 
 def setup_aws():
-    s3 = boto3.client("s3", region_name="ap-southeast-1")
+    s3 = boto3.client("s3", region_name=_REGION)  # fix S6262
     s3.create_bucket(
         Bucket=REPORTS_BUCKET,
-        CreateBucketConfiguration={"LocationConstraint": "ap-southeast-1"},
+        CreateBucketConfiguration={"LocationConstraint": _REGION},
     )
 
-    dynamodb = boto3.resource("dynamodb", region_name="ap-southeast-1")
+    dynamodb = boto3.resource("dynamodb", region_name=_REGION)  # fix S6262
 
     order_table = dynamodb.create_table(
         TableName=ORDER_TABLE_NAME,
@@ -97,7 +97,7 @@ def test_report_generator_success():
 @mock_aws
 def test_report_generator_empty_orders():
     """Empty orders table - still generates CSV with just headers."""
-    s3, order_table, jobs_table = setup_aws()
+    s3, jobs_table = setup_aws()
 
     response = lambda_handler({}, {})
 

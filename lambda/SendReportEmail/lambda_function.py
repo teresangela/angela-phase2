@@ -2,14 +2,18 @@ import os
 import json
 import boto3
 from datetime import datetime, timezone
+from botocore.config import Config
 
-ses = boto3.client("ses", region_name="ap-southeast-1")
-s3  = boto3.client("s3", region_name="ap-southeast-1")
+_region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "ap-southeast-1"
+_config = Config(connect_timeout=5, read_timeout=10)
 
-SENDER_EMAIL    = os.environ["SENDER_EMAIL"]
-RECIPIENT_EMAIL = os.environ["RECIPIENT_EMAIL"]
-REPORTS_BUCKET  = os.environ["REPORTS_BUCKET"]
-PRESIGNED_EXPIRY = int(os.environ.get("PRESIGNED_EXPIRY", 3600))  # 1 hour default
+ses = boto3.client("ses", region_name=_region, config=_config)
+s3  = boto3.client("s3",  region_name=_region, config=_config)
+
+SENDER_EMAIL     = os.environ["SENDER_EMAIL"]
+RECIPIENT_EMAIL  = os.environ["RECIPIENT_EMAIL"]
+REPORTS_BUCKET   = os.environ["REPORTS_BUCKET"]
+PRESIGNED_EXPIRY = int(os.environ.get("PRESIGNED_EXPIRY", 3600))
 
 
 def lambda_handler(event, context):

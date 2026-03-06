@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Angel's — Orders</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #faf9f7; --surface: #ffffff; --card: #f5f3f0;
+    --border: #e8e2db; --border2: #d4cdc4;
+    --accent: #c9a96e; --accent2: #a8c5b5; --rose: #e8b4b8;
+    --danger: #d97b7b; --text: #2c2825; --muted: #6b6059; --tag-bg: #f0ece6; /* fix S7924: darkened --muted from #9c9189 */
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  body::before {
+    content: ''; position: fixed; inset: 0; z-index: 0;
+    background-image: radial-gradient(circle, #c9a96e18 1px, transparent 1px);
+    background-size: 28px 28px; pointer-events: none;
+  }
+  .shell { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 0 32px 80px; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 40px 0 36px; border-bottom: 1.5px solid var(--border); margin-bottom: 44px;
+  }
+  .brand-name { font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 600; letter-spacing: -.5px; }
+  .brand-name em { font-style: italic; color: var(--accent); }
+  .brand-sub { font-size: 11px; font-weight: 300; color: var(--muted); letter-spacing: 2.5px; text-transform: uppercase; margin-top: 2px; }
+  .api-pill { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); background: var(--card); border: 1px solid var(--border); padding: 6px 14px; border-radius: 20px; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .api-pill.connected { border-color: var(--accent2); color: #5a8a76; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 28px; }
+  .filter-group { display: flex; flex-direction: column; gap: 5px; }
+  .filter-group label { font-size: 10px; font-weight: 500; letter-spacing: 1.8px; text-transform: uppercase; color: var(--muted); }
+  .filter-group select, .filter-group input[type="date"] {
+    background: var(--surface); border: 1.5px solid var(--border); border-radius: 10px;
+    color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 13px;
+    padding: 9px 14px; outline: none; transition: border-color .2s, box-shadow .2s;
+    -webkit-appearance: none; appearance: none; cursor: pointer; /* fix vendorPrefix: added appearance: none */
+  }
+  .filter-group select:focus, .filter-group input[type="date"]:focus {
+    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(201,169,110,.12);
+  }
+
+  .btn { display: inline-flex; align-items: center; gap: 7px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; padding: 10px 20px; border-radius: 10px; border: none; cursor: pointer; transition: all .2s; text-decoration: none; }
+  .btn-primary { background: var(--text); color: #fff; }
+  .btn-primary:hover { background: #3d3530; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(44,40,37,.2); }
+  .btn-outline { background: transparent; border: 1.5px solid var(--border2); color: var(--muted); }
+  .btn-outline:hover { border-color: var(--text); color: var(--text); }
+  .btn-export { background: linear-gradient(135deg, #a8c5b5, #7dab97); color: white; }
+  .btn-export:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(168,197,181,.4); }
+  .btn-export:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+  .btn-download { background: var(--accent); color: white; font-size: 12px; padding: 8px 16px; }
+  .btn-download:hover { background: #b8935a; }
+
+  .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+  .result-count { font-size: 12px; color: var(--muted); font-family: 'DM Mono', monospace; }
+  .result-count strong { color: var(--text); }
+
+  .export-panel { background: var(--surface); border: 1.5px solid var(--border); border-left: 3px solid var(--accent2); border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; display: none; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .export-panel.visible { display: flex; }
+  .export-label { font-size: 10px; font-weight: 500; letter-spacing: 1.8px; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+  .export-job-id { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--accent); }
+  .spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent2); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .progress-bar { width: 120px; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); animation: prog 1.5s ease-in-out infinite alternate; }
+  @keyframes prog { from { width: 15%; } to { width: 85%; } }
+
+  .table-wrap { background: var(--surface); border: 1.5px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: 0 2px 20px rgba(44,40,37,.06); }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { background: var(--card); padding: 13px 20px; text-align: left; font-size: 10px; font-weight: 500; letter-spacing: 1.8px; text-transform: uppercase; color: var(--muted); border-bottom: 1.5px solid var(--border); white-space: nowrap; }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .15s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: #fdf9f5; }
+  tbody td { padding: 14px 20px; font-size: 13px; vertical-align: middle; }
+  .mono { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); }
+  .order-id { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--accent); }
+
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 500; letter-spacing: .8px; text-transform: uppercase; padding: 4px 10px; border-radius: 20px; }
+  .badge::before { content:''; width:5px; height:5px; border-radius:50%; }
+  .badge-processed { background: #e8f4ef; color: #4a8a6f; }
+  .badge-processed::before { background: #4a8a6f; }
+  .badge-pending { background: #fdf3e3; color: #c4882a; }
+  .badge-pending::before { background: #c4882a; }
+  .badge-failed { background: #fdeaea; color: #c45a5a; }
+  .badge-failed::before { background: #c45a5a; }
+  .items-tag { background: var(--tag-bg); color: var(--muted); font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 6px; font-family: 'DM Mono', monospace; }
+
+  .state-row td { text-align: center; padding: 72px 20px !important; color: var(--muted); }
+  .state-icon { font-size: 28px; margin-bottom: 10px; }
+  .state-text { font-size: 13px; line-height: 1.6; }
+
+  #toast { position: fixed; bottom: 28px; right: 28px; background: var(--surface); border: 1.5px solid var(--border); border-left: 3px solid var(--accent2); color: var(--text); padding: 12px 18px; border-radius: 10px; font-size: 13px; z-index: 9999; transform: translateY(12px); opacity: 0; transition: all .3s; max-width: 300px; pointer-events: none; box-shadow: 0 4px 20px rgba(44,40,37,.1); }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.error { border-left-color: var(--danger); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div>
+      <div class="brand-name"><em>Angel's</em></div>
+      <div class="brand-sub">Order Management</div>
+    </div>
+    <div class="api-pill" id="apiBadge">No API URL configured</div>
+  </header>
+
+  <div class="filters">
+    <div class="filter-group">
+      <label for="filterStatus">Status</label>
+      <select id="filterStatus">
+        <option value="">All statuses</option>
+        <option value="PROCESSED">Processed</option>
+        <option value="PENDING">Pending</option>
+        <option value="FAILED">Failed</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="filterFrom">From</label>
+      <input type="date" id="filterFrom" autocomplete="off"/>
+    </div>
+    <div class="filter-group">
+      <label for="filterTo">To</label>
+      <input type="date" id="filterTo" autocomplete="off"/>
+    </div>
+    <button class="btn btn-primary" onclick="loadOrders()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      Fetch Orders
+    </button>
+    <button class="btn btn-outline" onclick="resetFilters()">Reset</button>
+  </div>
+
+  <div class="export-panel" id="exportPanel">
+    <div id="exportSpinWrap" style="display:flex;align-items:center;gap:10px;">
+      <div class="spinner"></div>
+      <div>
+        <div class="export-label">Export Job</div>
+        <div class="export-job-id" id="exportJobId">—</div>
+      </div>
+    </div>
+    <div class="progress-bar" id="exportProgressBar"><div class="progress-fill"></div></div>
+    <div id="exportStatusText" style="font-size:13px;color:var(--muted);">Processing…</div>
+    <div id="exportDownloadWrap" style="display:none;"></div>
+  </div>
+
+  <div class="toolbar">
+    <span class="result-count" id="resultCount">—</span>
+    <button class="btn btn-export" id="exportBtn" onclick="startExport()" disabled>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export CSV
+    </button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Order ID</th><th>User ID</th><th>Items</th><th>Status</th><th>Processed At</th>
+        </tr>
+      </thead>
+      <tbody id="ordersBody">
+        <tr class="state-row">
+          <td colspan="5">
+            <div class="state-icon">🌸</div>
+            <div class="state-text">Click <strong>Fetch Orders</strong> to load data</div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script>
+  // fix S7764: replaced window with globalThis
+  const API_BASE = (globalThis.APP_CONFIG && globalThis.APP_CONFIG.apiUrl)
+    ? globalThis.APP_CONFIG.apiUrl.replace(/\/$/, '')
+    : 'https://n7ltpqhpvg.execute-api.ap-southeast-1.amazonaws.com/prod';
+  const apiBadge = document.getElementById('apiBadge');
+  if (API_BASE) { apiBadge.textContent = API_BASE; apiBadge.classList.add('connected'); }
+
+  let currentFilters = {}, pollInterval = null;
+
+  function headers() {
+    const h = { 'Content-Type': 'application/json' };
+    const t = sessionStorage.getItem('idToken');
+    if (t) h['Authorization'] = `Bearer ${t}`;
+    return h;
+  }
+  function toast(msg, isError = false) {
+    const el = document.getElementById('toast');
+    el.textContent = msg; el.className = 'show' + (isError ? ' error' : '');
+    clearTimeout(el._t); el._t = setTimeout(() => el.className = '', 3500);
+  }
+  function statusBadge(s) {
+    s = (s||'').toUpperCase();
+    // fix S3358: extracted nested ternary into independent statements
+    let cls;
+    if (s === 'PROCESSED') cls = 'badge-processed';
+    else if (s === 'PENDING') cls = 'badge-pending';
+    else cls = 'badge-failed';
+    return `<span class="badge ${cls}">${s||'UNKNOWN'}</span>`;
+  }
+  function fmtDate(iso) {
+    if (!iso) return '<span style="color:var(--muted)">—</span>';
+    try { return new Date(iso).toLocaleString('en-SG',{timeZone:'Asia/Singapore',year:'numeric',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+    catch { return iso; }
+  }
+  function shortId(id) { return `<span class="order-id" title="${id}">${(id||'').slice(0,8)}…</span>`; }
+
+  async function loadOrders() {
+    const tbody = document.getElementById('ordersBody');
+    tbody.innerHTML = `<tr class="state-row"><td colspan="5"><div style="display:flex;align-items:center;justify-content:center;gap:10px;"><div class="spinner"></div><span class="state-text">Loading…</span></div></td></tr>`;
+    const status = document.getElementById('filterStatus').value;
+    const fromDate = document.getElementById('filterFrom').value;
+    const toDate = document.getElementById('filterTo').value;
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (fromDate) params.set('from', new Date(fromDate).toISOString());
+    if (toDate) params.set('to', new Date(toDate+'T23:59:59').toISOString());
+    currentFilters = { status, from: fromDate, to: toDate };
+    try {
+      const res = await fetch(`${API_BASE}/orders${params.toString()?'?'+params:''}`, { headers: headers() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      const orders = data.items || [];
+      renderOrders(orders);
+      document.getElementById('exportBtn').disabled = orders.length === 0;
+      toast(`Loaded ${orders.length} order${orders.length === 1 ? '' : 's'}`); // fix S7735
+    } catch(err) {
+      tbody.innerHTML = `<tr class="state-row"><td colspan="5"><div class="state-icon">⚠️</div><div class="state-text" style="color:var(--danger)">${err.message}</div></td></tr>`;
+      document.getElementById('resultCount').textContent = '—';
+      document.getElementById('exportBtn').disabled = true;
+      toast(err.message, true);
+    }
+  }
+  function renderOrders(orders) {
+    const tbody = document.getElementById('ordersBody');
+    document.getElementById('resultCount').innerHTML = `<strong>${orders.length}</strong> order${orders.length === 1 ? '' : 's'} found`; // fix S7735
+    if (orders.length === 0) { // fix S7735: removed negated condition
+      tbody.innerHTML = `<tr class="state-row"><td colspan="5"><div class="state-icon">🔍</div><div class="state-text">No orders match the current filters</div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = orders.map(o => {
+      const n = Array.isArray(o.items) ? o.items.length : '?';
+      return `<tr><td>${shortId(o.orderId||'')}</td><td>${shortId(o.userId||'')}</td><td><span class="items-tag">${n} item${n === 1 ? '' : 's'}</span></td><td>${statusBadge(o.status)}</td><td><span class="mono">${fmtDate(o.processedAt)}</span></td></tr>`; // fix S7735
+    }).join('');
+  }
+  function resetFilters() {
+    document.getElementById('filterStatus').value='';
+    document.getElementById('filterFrom').value='';
+    document.getElementById('filterTo').value='';
+    currentFilters={};
+  }
+  async function startExport() {
+    const btn = document.getElementById('exportBtn');
+    btn.disabled = true; showExportPanel('pending', null);
+    const body = { requestedBy: 'dashboard' };
+    if (currentFilters.status) body.status = currentFilters.status;
+    if (currentFilters.from) body.from = new Date(currentFilters.from).toISOString();
+    if (currentFilters.to) body.to = new Date(currentFilters.to+'T23:59:59').toISOString();
+    try {
+      const res = await fetch(`${API_BASE}/exports/orders`, { method:'POST', headers:headers(), body:JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      document.getElementById('exportJobId').textContent = data.jobId;
+      showExportPanel('running', data.jobId); toast('Export started ✨');
+      clearInterval(pollInterval);
+      pollInterval = setInterval(() => pollExportJob(data.jobId), 3000);
+    } catch(err) { showExportPanel('hidden',null); btn.disabled=false; toast('Export failed: '+err.message,true); }
+  }
+  async function pollExportJob(jobId) {
+    try {
+      const res = await fetch(`${API_BASE}/exports/orders/${jobId}`, { headers:headers() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      if (data.status==='DONE') { clearInterval(pollInterval); showExportPanel('done',jobId,data.downloadUrl,data.s3Key); document.getElementById('exportBtn').disabled=false; toast('Export ready! 🎉'); }
+      else if (data.status==='FAILED') { clearInterval(pollInterval); showExportPanel('failed',jobId,null,null,data.errorMessage); document.getElementById('exportBtn').disabled=false; toast('Export failed',true); }
+    } catch(err) { clearInterval(pollInterval); showExportPanel('hidden',null); document.getElementById('exportBtn').disabled=false; toast('Polling error: '+err.message,true); }
+  }
+  function showExportPanel(state, jobId, downloadUrl, s3Key, errorMsg) {
+    const panel=document.getElementById('exportPanel'), spin=document.getElementById('exportSpinWrap'), prog=document.getElementById('exportProgressBar'), statusText=document.getElementById('exportStatusText'), dlWrap=document.getElementById('exportDownloadWrap');
+    dlWrap.style.display='none'; dlWrap.innerHTML=''; spin.style.display='flex'; prog.style.display='block'; panel.classList.remove('visible');
+    if (state==='hidden') return;
+    panel.classList.add('visible');
+    if (state==='pending') { statusText.style.color='var(--muted)'; statusText.textContent='Creating export job…'; document.getElementById('exportJobId').textContent='—'; }
+    else if (state==='running') { statusText.style.color='var(--muted)'; statusText.textContent='Processing… checking every 3s'; }
+    else if (state==='done') {
+      spin.style.display='none'; prog.style.display='none'; statusText.style.color='#4a8a6f'; statusText.textContent='✓ Export complete';
+      dlWrap.style.display='block';
+      const filename = s3Key ? s3Key.split('/').pop() : 'export.csv';
+      dlWrap.innerHTML = `<a href="${downloadUrl}" download="${filename}" class="btn btn-download" target="_blank"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download ${filename}</a><span style="font-size:11px;color:var(--muted);margin-left:8px;">Expires in 1 hour</span>`;
+    } else if (state==='failed') { spin.style.display='none'; prog.style.display='none'; statusText.style.color='var(--danger)'; statusText.textContent='✗ '+(errorMsg||'Export failed'); }
+  }
+</script>
+</body>
+</html>

@@ -8,7 +8,7 @@ import os
 os.environ["ORDER_TABLE_NAME"] = "Order"
 os.environ["AWS_ACCESS_KEY_ID"] = "testing"
 os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-os.environ["AWS_DEFAULT_REGION"] = "ap-southeast-1"
+REGION = os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-1")  # fix S6262
 
 sys.path.insert(0, "lambda/ProcessOrder")
 from lambda_function import lambda_handler
@@ -17,7 +17,7 @@ from lambda_function import lambda_handler
 @pytest.fixture
 def order_table():
     with mock_aws():
-        dynamodb = boto3.resource("dynamodb", region_name="ap-southeast-1")
+        dynamodb = boto3.resource("dynamodb", region_name=_REGION)
         table = dynamodb.create_table(
             TableName="Order",
             KeySchema=[{"AttributeName": "orderId", "KeyType": "HASH"}],

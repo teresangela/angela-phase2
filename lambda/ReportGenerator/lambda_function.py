@@ -5,13 +5,17 @@ import json
 import uuid
 import boto3
 from datetime import datetime, timezone
+from botocore.config import Config
 
-dynamodb = boto3.resource("dynamodb")
-s3 = boto3.client("s3")
+_config  = Config(connect_timeout=5, read_timeout=10)
+dynamodb = boto3.resource("dynamodb", config=_config)
+s3       = boto3.client("s3", config=_config)
+sts      = boto3.client("sts", config=_config)
 
 REPORTS_BUCKET   = os.environ["REPORTS_BUCKET"]
 ORDER_TABLE_NAME = os.environ["ORDER_TABLE_NAME"]
 JOBS_TABLE_NAME  = os.environ["JOBS_TABLE_NAME"]
+ACCOUNT_ID       = sts.get_caller_identity()["Account"]
 
 
 def lambda_handler(event, context):
@@ -29,10 +33,9 @@ def lambda_handler(event, context):
     try:
         # ── 2. Query orders from DynamoDB ─────────────────────────────────────
         order_table = dynamodb.Table(ORDER_TABLE_NAME)
-        response    = order_table.scan()          # swap for query/filter as needed
+        response    = order_table.scan()
         orders      = response.get("Items", [])
 
-        # Handle pagination
         while "LastEvaluatedKey" in response:
             response = order_table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
             orders.extend(response.get("Items", []))
@@ -45,9 +48,8 @@ def lambda_handler(event, context):
         writer.writerows(orders)
 
         # ── 4. Upload to S3 ───────────────────────────────────────────────────
-        # s3://reports-bucket/reports/orders/YYYY/MM/DD/orders_report_<timestamp>.csv
-        timestamp  = now.strftime("%Y%m%d_%H%M%S")
-        s3_key     = (
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        s3_key    = (
             f"reports/orders/"
             f"{now.strftime('%Y')}/"
             f"{now.strftime('%m')}/"
@@ -60,6 +62,7 @@ def lambda_handler(event, context):
             Key=s3_key,
             Body=output.getvalue(),
             ContentType="text/csv",
+            ExpectedBucketOwner=ACCOUNT_ID,  # fix S7608
         )
 
         print(f"[OK] Uploaded report → s3://{REPORTS_BUCKET}/{s3_key} ({len(orders)} rows)")
@@ -81,8 +84,6 @@ def lambda_handler(event, context):
 
     except Exception as e:
         print(f"[ERROR] {e}")
-
-        # Update job record: FAILED
         jobs_table.update_item(
             Key={"jobId": job_id},
             UpdateExpression="SET #s = :s, errorMessage = :e",

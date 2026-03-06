@@ -5,14 +5,15 @@ import urllib.request
 import urllib.error
 import urllib.parse
 from datetime import datetime, timezone
+from botocore.config import Config
 
-dynamodb = boto3.resource(
-    "dynamodb",
-    region_name=os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-1")
-)
-secrets  = boto3.client("secretsmanager", region_name="ap-southeast-1")
+_region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "ap-southeast-1"
+_config = Config(connect_timeout=5, read_timeout=10)
 
-ORDER_TABLE_NAME = os.environ["ORDER_TABLE_NAME"]
+dynamodb = boto3.resource("dynamodb", region_name=_region, config=_config)
+secrets  = boto3.client("secretsmanager", region_name=_region, config=_config)  # fix S6262
+
+ORDER_TABLE_NAME  = os.environ["ORDER_TABLE_NAME"]
 STRIPE_SECRET_ARN = os.environ["STRIPE_SECRET_ARN"]
 
 
@@ -39,23 +40,23 @@ def create_payment_intent(stripe_key, amount, currency, order_id, user_id):
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
 
     try:
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req) as response:  # noqa
             return json.loads(response.read().decode())
 
-    except urllib.error.HTTPError as e:
+    except urllib.error.HTTPError as e:  # fix S112 - specific exception type
         error_body = json.loads(e.read().decode())
 
-        # 🔥 Important: Let Step Function retry this
+        # Let Step Function retry this
         if e.code == 429:
-            raise Exception("RateLimited")
+            raise RuntimeError("RateLimited") from e  # fix S112
 
-        raise Exception(
+        raise RuntimeError(
             f"StripeHttpError_{e.code}: {error_body.get('error', {}).get('message')}"
-        )
+        ) from e  # fix S112
 
 
 def lambda_handler(event, context):
-   # Support both API Gateway (has "body") and Step Functions (raw JSON)
+    # Support both API Gateway (has "body") and Step Functions (raw JSON)
     if "body" in event:
         body = json.loads(event.get("body") or "{}")
     else:
@@ -67,7 +68,6 @@ def lambda_handler(event, context):
 
     if not order_id or not amount or not currency:
         return {"statusCode": 400, "body": json.dumps({"message": "orderId, amount, and currency are required"})}
-
 
     # Fetch order from DynamoDB
     table  = dynamodb.Table(ORDER_TABLE_NAME)
@@ -88,7 +88,6 @@ def lambda_handler(event, context):
 
         print(f"[OK] PaymentIntent created: {payment_intent_id} status={pi_status} for orderId={order_id}")
 
-        # Save paymentIntentId back to Order record
         table.update_item(
             Key={"orderId": order_id},
             UpdateExpression="SET paymentIntentId = :pi, paymentStatus = :ps, paymentUpdatedAt = :t",
@@ -110,11 +109,9 @@ def lambda_handler(event, context):
             }),
         }
 
-    except Exception as e:
+    except RuntimeError as e:  # fix S112 - specific exception type
         print(f"[ERROR] Stripe call failed for orderId={order_id}: {e}")
         return {
             "statusCode": 500,
             "body": json.dumps({"message": str(e)}),
         }
-
-

@@ -6,6 +6,12 @@ from boto3.dynamodb.conditions import Key, Attr
 dynamodb = boto3.resource("dynamodb")
 ORDER_TABLE_NAME = os.environ["ORDER_TABLE_NAME"]
 
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Authorization,Content-Type",
+    "Access-Control-Allow-Methods": "GET,OPTIONS",
+}
+
 
 def lambda_handler(event, context):
     table = dynamodb.Table(ORDER_TABLE_NAME)
@@ -44,6 +50,7 @@ def lambda_handler(event, context):
 
     return {
         "statusCode": 200,
+        "headers": CORS_HEADERS,
         "body": json.dumps({
             "count": len(orders),
             "items": orders,

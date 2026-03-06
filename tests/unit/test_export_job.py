@@ -7,12 +7,12 @@ import os
 import sys
 import importlib.util
 
-os.environ["EXPORT_JOB_TABLE"]   = "ExportJob"
-os.environ["ORDER_TABLE_NAME"]   = "Order"
-os.environ["REPORTS_BUCKET"]     = "angel-phase2-reports"
-os.environ["EXPORT_QUEUE_URL"]   = "https://sqs.ap-southeast-1.amazonaws.com/123456789012/ExportJobQueue.fifo"
-os.environ["AWS_DEFAULT_REGION"] = "ap-southeast-1"
-os.environ["AWS_ACCESS_KEY_ID"]  = "testing"
+os.environ["EXPORT_JOB_TABLE"]      = "ExportJob"
+os.environ["ORDER_TABLE_NAME"]      = "Order"
+os.environ["REPORTS_BUCKET"]        = "angel-phase2-reports"
+os.environ["EXPORT_QUEUE_URL"]      = "https://sqs.ap-southeast-1.amazonaws.com/123456789012/ExportJobQueue.fifo"
+os.environ["AWS_DEFAULT_REGION"]    = "ap-southeast-1"
+os.environ["AWS_ACCESS_KEY_ID"]     = "testing"
 os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
 
 
@@ -33,9 +33,11 @@ EXPORT_JOB_TABLE = "ExportJob"
 ORDER_TABLE_NAME = "Order"
 REPORTS_BUCKET   = "angel-phase2-reports"
 
+_REGION = os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-1")  # fix S6262
+
 
 def setup_aws():
-    dynamodb = boto3.resource("dynamodb", region_name="ap-southeast-1")
+    dynamodb = boto3.resource("dynamodb", region_name=_REGION)  # fix S6262
 
     export_job_table = dynamodb.create_table(
         TableName=EXPORT_JOB_TABLE,
@@ -51,13 +53,13 @@ def setup_aws():
         BillingMode="PAY_PER_REQUEST",
     )
 
-    s3 = boto3.client("s3", region_name="ap-southeast-1")
+    s3 = boto3.client("s3", region_name=_REGION)  # fix S6262
     s3.create_bucket(
         Bucket=REPORTS_BUCKET,
-        CreateBucketConfiguration={"LocationConstraint": "ap-southeast-1"},
+        CreateBucketConfiguration={"LocationConstraint": _REGION},
     )
 
-    sqs = boto3.client("sqs", region_name="ap-southeast-1")
+    sqs = boto3.client("sqs", region_name=_REGION)  # fix S6262
     queue = sqs.create_queue(
         QueueName="ExportJobQueue.fifo",
         Attributes={

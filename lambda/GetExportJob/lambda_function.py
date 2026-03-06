@@ -8,7 +8,13 @@ s3       = boto3.client("s3")
 
 EXPORT_JOB_TABLE = os.environ["EXPORT_JOB_TABLE"]
 REPORTS_BUCKET   = os.environ["REPORTS_BUCKET"]
-PRESIGNED_EXPIRY = int(os.environ.get("PRESIGNED_EXPIRY", 3600))  # 1 hour default
+PRESIGNED_EXPIRY = int(os.environ.get("PRESIGNED_EXPIRY", 3600))
+
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Authorization,Content-Type",
+    "Access-Control-Allow-Methods": "GET,OPTIONS",
+}
 
 
 def lambda_handler(event, context):
@@ -21,6 +27,7 @@ def lambda_handler(event, context):
     if not job:
         return {
             "statusCode": 404,
+            "headers": CORS_HEADERS,
             "body": json.dumps({"message": f"Job {job_id} not found"}),
         }
 
@@ -31,7 +38,6 @@ def lambda_handler(event, context):
         "completedAt": job.get("completedAt"),
     }
 
-    # If DONE, generate presigned URL on-demand
     if job["status"] == "DONE" and job.get("s3Key"):
         presigned_url = s3.generate_presigned_url(
             "get_object",
@@ -39,7 +45,6 @@ def lambda_handler(event, context):
             ExpiresIn=PRESIGNED_EXPIRY,
         )
         expires_at = datetime.now(timezone.utc).timestamp() + PRESIGNED_EXPIRY
-
         response["downloadUrl"] = presigned_url
         response["expiresAt"]   = datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat()
         response["s3Key"]       = job["s3Key"]
@@ -49,5 +54,6 @@ def lambda_handler(event, context):
 
     return {
         "statusCode": 200,
+        "headers": CORS_HEADERS,
         "body": json.dumps(response, default=str),
     }

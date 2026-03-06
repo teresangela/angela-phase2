@@ -8,7 +8,7 @@ os.environ["USER_TABLE_NAME"] = "User"
 os.environ["UPLOAD_BUCKET"] = "angel-phase2-uploads"
 os.environ["AWS_ACCESS_KEY_ID"] = "testing"
 os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-os.environ["AWS_DEFAULT_REGION"] = "ap-southeast-1"
+_REGION = os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-1")  # fix S6262
 
 def load_handler(module_name, file_path, handler_name="lambda_handler"):
     spec = importlib.util.spec_from_file_location(module_name, file_path)
@@ -29,13 +29,13 @@ download_handler = load_handler(
 
 def setup_aws():
     """Helper: buat S3 bucket + DynamoDB User table"""
-    s3 = boto3.client("s3", region_name="ap-southeast-1")
+    s3 = boto3.client("s3", region_name=_REGION)  # fix S6262
     s3.create_bucket(
         Bucket="angel-phase2-uploads",
-        CreateBucketConfiguration={"LocationConstraint": "ap-southeast-1"},
+        CreateBucketConfiguration={"LocationConstraint": _REGION},  # fix S6262
     )
 
-    dynamodb = boto3.resource("dynamodb", region_name="ap-southeast-1")
+    dynamodb = boto3.resource("dynamodb", region_name=_REGION)  # fix S6262
     table = dynamodb.create_table(
         TableName="User",
         KeySchema=[{"AttributeName": "userId", "KeyType": "HASH"}],
@@ -85,7 +85,7 @@ def test_get_upload_url_invalid_content_type():
         assert "Invalid contentType" in body["message"]
 
 
-def test_get_upload_url_missing_userId():
+def test_get_upload_url_no_user_id(sqs_queue):
     """Validasi - userId tidak ada di path"""
     with mock_aws():
         setup_aws()

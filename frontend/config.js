@@ -1,0 +1,1 @@
+globalThis.APP_CONFIG = { apiUrl: "https://n7ltpqhpvg.execute-api.ap-southeast-1.amazonaws.com/prod" };

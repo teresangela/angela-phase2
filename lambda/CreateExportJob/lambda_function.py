@@ -4,11 +4,16 @@ import uuid
 import boto3
 from datetime import datetime, timezone
 
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Authorization,Content-Type",
+    "Access-Control-Allow-Methods": "POST,OPTIONS",
+}
+
 def _region():
     return os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "ap-southeast-1"
 
 def lambda_handler(event, context):
-    # bikin client di dalam handler (biar moto bisa mock)
     dynamodb = boto3.resource("dynamodb", region_name=_region())
     sqs      = boto3.client("sqs", region_name=_region())
 
@@ -19,13 +24,11 @@ def lambda_handler(event, context):
     job_id = str(uuid.uuid4())
     now    = datetime.now(timezone.utc).isoformat()
 
-    # filter: buang yang None biar rapi (optional)
     filters = {}
     if body.get("status"): filters["status"] = body["status"]
     if body.get("from"):   filters["from"]   = body["from"]
     if body.get("to"):     filters["to"]     = body["to"]
 
-    # Write job record: PENDING
     table = dynamodb.Table(export_job_table)
     table.put_item(Item={
         "jobId":       job_id,
@@ -35,7 +38,6 @@ def lambda_handler(event, context):
         "createdAt":   now,
     })
 
-    # Send to SQS
     sqs.send_message(
         QueueUrl=export_queue_url,
         MessageBody=json.dumps({"jobId": job_id, "filters": filters}),
@@ -45,5 +47,6 @@ def lambda_handler(event, context):
 
     return {
         "statusCode": 202,
+        "headers": CORS_HEADERS,
         "body": json.dumps({"jobId": job_id, "status": "PENDING"}),
     }

@@ -2,7 +2,6 @@ import json
 import pytest
 import boto3
 from moto import mock_aws
-from unittest.mock import patch
 import os
 
 # Set env vars sebelum import lambda
@@ -25,8 +24,9 @@ def aws_credentials():
 
 @pytest.fixture
 def sqs_queue(aws_credentials):
+    region = os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-1")  # fix S6262
     with mock_aws():
-        sqs = boto3.client("sqs", region_name="ap-southeast-1")
+        sqs = boto3.client("sqs", region_name=region)
         queue = sqs.create_queue(
             QueueName="OrderQueue.fifo",
             Attributes={
@@ -35,14 +35,12 @@ def sqs_queue(aws_credentials):
             },
         )
         os.environ["ORDER_QUEUE_URL"] = queue["QueueUrl"]
-        yield sqs, queue["QueueUrl"]
+        yield queue["QueueUrl"]  # fix S1481 - drop unused sqs variable
 
 
 @mock_aws
 def test_create_order_success(sqs_queue):
     """Happy path - order berhasil masuk queue"""
-    sqs, queue_url = sqs_queue
-
     event = {
         "body": json.dumps({
             "userId": "006",
@@ -60,7 +58,7 @@ def test_create_order_success(sqs_queue):
 
 
 @mock_aws
-def test_create_order_missing_userId(sqs_queue):
+def test_create_order_no_user_id(sqs_queue):  # fix S1542 - renamed to match ^[a-z_][a-z0-9_]*$
     """Validasi - userId tidak ada"""
     event = {
         "body": json.dumps({
@@ -97,6 +95,6 @@ def test_create_order_empty_body(sqs_queue):
     event = {"body": None}
 
     response = lambda_handler(event, {})
-    body = json.loads(response["body"])
+    _ = json.loads(response["body"])  # fix S1481 - use _ for unused variable
 
     assert response["statusCode"] == 400

@@ -13,7 +13,7 @@ class StepFunctionStack(Stack):
         # import Order table (sama kayak kamu)
         order_table = dynamodb.Table.from_table_name(self, "OrderTableImportSF", "Order")
 
-        # import secret
+        # import secret key
         stripe_secret = secretsmanager.Secret.from_secret_name_v2(
             self, "StripeSecretSF", "stripe/secret-key"
         )

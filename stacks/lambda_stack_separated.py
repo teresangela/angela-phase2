@@ -255,6 +255,11 @@ class LambdaStackSeparated(Stack):
             "HyPhase2ApiSeparated",
             rest_api_name="HyPhase2ApiSeparated",
             deploy_options=apigw.StageOptions(stage_name="prod"),
+            default_cors_preflight_options=apigw.CorsOptions(
+                allow_origins=apigw.Cors.ALL_ORIGINS,
+                allow_methods=apigw.Cors.ALL_METHODS,
+                allow_headers=["Authorization", "Content-Type"],
+            ),
         )
         self.api = api
         state_machine_arn = Fn.import_value("StripeStateMachineArn")
@@ -381,6 +386,7 @@ class LambdaStackSeparated(Stack):
             enforce_https=True,
             node_to_node_encryption=True,
             encryption_at_rest=opensearch.EncryptionAtRestOptions(enabled=True),
+            tls_security_policy=opensearch.TLSSecurityPolicy.TLS_1_2,
         )
 
         # ------------------------

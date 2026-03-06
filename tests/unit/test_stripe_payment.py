@@ -10,7 +10,7 @@ import urllib.error
 
 os.environ["ORDER_TABLE_NAME"]   = "Order"
 os.environ["STRIPE_SECRET_ARN"]  = "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:stripe/secret-key"
-os.environ["AWS_DEFAULT_REGION"] = "ap-southeast-1"
+_REGION = os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-1")  # fix S6262
 os.environ["AWS_ACCESS_KEY_ID"]  = "testing"
 os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
 
@@ -32,7 +32,7 @@ FAKE_STRIPE_KEY   = "sk_test_fake123"
 
 
 def setup_aws():
-    dynamodb = boto3.resource("dynamodb", region_name="ap-southeast-1")
+    dynamodb = boto3.resource("dynamodb", region_name=_REGION)  # fix S6262
     table = dynamodb.create_table(
         TableName=ORDER_TABLE_NAME,
         KeySchema=[{"AttributeName": "orderId", "KeyType": "HASH"}],
@@ -40,7 +40,7 @@ def setup_aws():
         BillingMode="PAY_PER_REQUEST",
     )
 
-    secrets = boto3.client("secretsmanager", region_name="ap-southeast-1")
+    secrets = boto3.client("secretsmanager", region_name=_REGION)  # fix S6262
     secrets.create_secret(
         Name="stripe/secret-key",
         SecretString=FAKE_STRIPE_KEY,
